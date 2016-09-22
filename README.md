@@ -311,3 +311,317 @@ result$.addListener({
     complete: () => console.log('Complete')
 })
 ```
+
+## Starting the Color app
+
+* Replace Hello World with Basic Slider
+    * Add label to imports for dom
+    * make state simple xs.of number
+    * map to num =>
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label} from '@cycle/dom'
+
+function main(sources) {
+    const state$ = xs.of(200)
+    const sinks = {
+        DOM: state$.map(num => div([
+            label('Choose A Number:'),
+            input('.slider', {attrs:{type:'range', min:0, max:255}, props:{value:num}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Slider renders, but doesn't do anything...
+* Add output for value
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label} from '@cycle/dom'
+
+function main(sources) {
+    const state$ = xs.of(200)
+    const sinks = {
+        DOM: state$.map(num => div([
+            label('Choose A Number:'),
+            input('.slider', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            h1(`Value: ${num}`)
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Now get value and use it
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label} from '@cycle/dom'
+
+function main(sources) {
+    const slider$ = sources.DOM.select('.slider').events('change')
+        .map(ev => ev.target.value)
+
+    const state$ = slider$
+    const sinks = {
+        DOM: state$.map(num => div([
+            label('Choose A Number:'),
+            input('.slider', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            h1(`Value: ${num}`)
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* This renders nothing!
+* Since the number comes from the slider and the rendering is dependent on that, there is no slider to provide a value... We need top start the stream with a value
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label} from '@cycle/dom'
+
+function main(sources) {
+    const slider$ = sources.DOM.select('.slider').events('change')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = slider$
+    const sinks = {
+        DOM: state$.map(num => div([
+            label('Choose A Number:'),
+            input('.slider', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            h1(`Value: ${num}`)
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Moving the slider updates the value (once we stop)
+* Let's make it happen in real time (change 'change' event to 'input' event)
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label} from '@cycle/dom'
+
+function main(sources) {
+    const slider$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = slider$
+    const sinks = {
+        DOM: state$.map(num => div([
+            label('Choose A Number:'),
+            input('.slider', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            h1(`Value: ${num}`)
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+### Using Multiple Sliders to Control Color
+
+* Reconfigure the view to show 3 sliders
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function main(sources) {
+    const slider$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = slider$
+    const sinks = {
+        DOM: state$.map(num => div([
+            h1('Current Color'),
+            label('Red:'),
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            br(),
+            label('Green:'),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            br(),
+            label('Blue:'),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:num}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Now I can read values from all 3 sliders, but the page won't render
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function main(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = slider$
+    const sinks = {
+        DOM: state$.map(num => div([
+            h1('Current Color'),
+            label('Red:'),
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            br(),
+            label('Green:'),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:num}}),
+            br(),
+            label('Blue:'),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:num}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Use combine to get all 3 color values
+* Pass 3 values into view Mapping
+* Display numeric value next to label
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function main(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = xs.combine(red$, green$, blue$)
+    const sinks = {
+        DOM: state$.map(([red, green, blue]) => div([
+            h1('Current Color'),
+            label(`Red:(${red})`),
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
+            br(),
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Apply color values to heading
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function main(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const state$ = xs.combine(red$, green$, blue$)
+    const sinks = {
+        DOM: state$.map(([red, green, blue]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            label(`Red:(${red})`),
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
+            br(),
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
