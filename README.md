@@ -625,3 +625,421 @@ run(main, {
     DOM: makeDOMDriver('#app')
 })
 ```
+
+## Refactor to Components
+
+* Make a simple component with no real functionality
+* Instantiate a sample component
+* Add its DOM prop to the merge for state$ (this is DOM, not really state.. fix that later)
+* Reference it in the render mapping
+
+``` js
+function LabeledSlider() {
+    const sinks = {
+        DOM: xs.of(label('slider goes here...'))
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const sampleSlider = LabeledSlider()
+
+    const state$ = xs.combine(red$, green$, blue$, sampleSlider.DOM)
+    const sinks = {
+        DOM: state$.map(([red, green, blue, sample]) => div([
+            sample,
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            label(`Red:(${red})`),
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
+            br(),
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Replace the Red slider with the new component...
+    * This will break rendering because red as a value doesn't exist...
+    * We can fix that temporarily by replacing `${red}` in heading with a `0`
+    * Doing that allows it to render and slide, but that one won't change the color
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const sinks = {
+        DOM: red$.map(red => div([
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
+            label(`Red:(${red})`)
+        ]))
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const redSlider = LabeledSlider(sources)
+    const redDom$ = redSlider.DOM
+
+    const state$ = xs.combine(redDom$, green$, blue$)
+    const sinks = {
+        DOM: state$.map(([redDom, green, blue]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            redDom,
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Our component needs to also supply a value
+* We can return value as a sink
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const red$ = sources.DOM.select('.red').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const sinks = {
+        DOM: red$.map(red => div([
+            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
+            label(`Red:(${red})`)
+        ])),
+        VALUE: red$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const redSlider = LabeledSlider(sources)
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const state$ = xs.combine(red$, redDom$, green$, blue$)
+    const sinks = {
+        DOM: state$.map(([red, redDom, green, blue]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            redDom,
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* Our slider is still focused on being Red and it needs to be reusable/generic
+* Let's pass in props to set some values on the specific instance
+    * Break out sources in DOM and PROPS
+    * Pass `xs.of` to props with name, min and max properties
+* Let's make the "red" references a little more generic too
+    * Change `.red` to `.slider`
+    * Update `red$` and `red` (inside map) to `value$` and `value` respectively
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const sinks = {
+        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ])),
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const green$ = sources.DOM.select('.green').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+    const blue$ = sources.DOM.select('.blue').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const redSlider = LabeledSlider({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const state$ = xs.combine(red$, redDom$, green$, blue$)
+    const sinks = {
+        DOM: state$.map(([red, redDom, green, blue]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            redDom,
+            label(`Green:(${green})`),
+            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
+            br(),
+            label(`Blue:(${blue})`),
+            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+
+```
+
+* Now that it's a reusable component, let's reuse it
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const sinks = {
+        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ])),
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const redSlider = LabeledSlider({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = LabeledSlider({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = LabeledSlider({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const state$ = xs.combine(red$, redDom$, green$, greenDom$, blue$, blueDom$)
+    const sinks = {
+        DOM: state$.map(([red, redDom, green, greenDom, blue, blueDom]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            redDom,
+            greenDom,
+            blueDom
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```
+
+* This **looks** right, but moving one slider, moves the rest...
+    * This is because our selector is using the `.slider` class.
+    * Cycle provides a util that will help solve this: Isolate
+* Install isolate - `npm i -S @cycle/isolate@1.4.0`
+* Import Isolate and apply it:
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import isolate from '@cycle/isolate'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const sinks = {
+        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ])),
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const state$ = xs.combine(red$, redDom$, green$, greenDom$, blue$, blueDom$)
+    const sinks = {
+        DOM: state$.map(([red, redDom, green, greenDom, blue, blueDom]) => div([
+            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
+            redDom,
+            greenDom,
+            blueDom
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+
+```
+
+* Let's Refactor the main a bit
+* First let's separate the external dom from the external state
+    * Define a `dom$` and make that an object with the latest dom values from the 3 component instances
+    * Define a `state$` that will replces the existing one - object with the component values
+    * render the view by combining state and external dom
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import isolate from '@cycle/isolate'
+import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const sinks = {
+        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ])),
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const state$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+    const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
+
+    const sinks = {
+        DOM: xs.combine(state$, dom$).map(([state, dom]) => div([
+            h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
+            dom.red,
+            dom.green,
+            dom.blue
+        ]))
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app')
+})
+```

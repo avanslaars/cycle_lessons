@@ -20,6 +20,7 @@
   "homepage": "https://github.com/avanslaars/cycle_lessons#readme",
   "dependencies": {
     "@cycle/dom": "^12.1.0",
+    "@cycle/isolate": "^1.4.0",
     "@cycle/xstream-run": "^3.0.4",
     "xstream": "^5.3.6"
   },

@@ -2,31 +2,49 @@
 
 import xs from 'xstream'
 import {run} from '@cycle/xstream-run'
+import isolate from '@cycle/isolate'
 import {makeDOMDriver, h1, div, input, label, br} from '@cycle/dom'
 
-function main(sources) {
-    const red$ = sources.DOM.select('.red').events('input')
-        .map(ev => ev.target.value)
-        .startWith(0)
-    const green$ = sources.DOM.select('.green').events('input')
-        .map(ev => ev.target.value)
-        .startWith(0)
-    const blue$ = sources.DOM.select('.blue').events('input')
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
         .map(ev => ev.target.value)
         .startWith(0)
 
-    const state$ = xs.combine(red$, green$, blue$)
+    const props$ = sources.PROPS
+
     const sinks = {
-        DOM: state$.map(([red, green, blue]) => div([
-            h1({attrs:{style:`color:rgb(${red}, ${green}, ${blue})`}},'Current Color'),
-            label(`Red:(${red})`),
-            input('.red', {attrs:{type:'range', min:0, max:255}, props:{value:red}}),
-            br(),
-            label(`Green:(${green})`),
-            input('.green', {attrs:{type:'range', min:0, max:255}, props:{value:green}}),
-            br(),
-            label(`Blue:(${blue})`),
-            input('.blue', {attrs:{type:'range', min:0, max:255}, props:{value:blue}})
+        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ])),
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const state$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+    const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
+
+    const sinks = {
+        DOM: xs.combine(state$, dom$).map(([state, dom]) => div([
+            h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
+            dom.red,
+            dom.green,
+            dom.blue
         ]))
     }
     return sinks
