@@ -29,6 +29,7 @@ function main(sources) {
 }
 ```
 
+* visit `http://localhost:8080`
 * Add input and move static greeting into `state$`
 
 ```
@@ -44,6 +45,7 @@ function main(sources) {
 }
 ```
 
+* visit `http://localhost:8080`
 * Reference input change stream and factor it into the display
 
 ```
@@ -61,3 +63,5 @@ function main(sources) {
     return sinks
 }
 ```
+
+* visit `http://localhost:8080`
