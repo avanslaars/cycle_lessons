@@ -12,11 +12,13 @@ function LabeledSlider(sources) {
 
     const props$ = sources.PROPS
 
-    const sinks = {
-        DOM: xs.combine(props$, value$).map(([props, value]) => div([
+    const view$ = xs.combine(props$, value$).map(([props, value]) => div([
             input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
             label(`${props.name}:(${value})`)
-        ])),
+        ]))
+
+    const sinks = {
+        DOM: view$,
         VALUE: value$
     }
 
@@ -39,13 +41,15 @@ function main(sources) {
     const state$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
     const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
 
-    const sinks = {
-        DOM: xs.combine(state$, dom$).map(([state, dom]) => div([
+    const view$ = xs.combine(state$, dom$).map(([state, dom]) => div([
             h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
             dom.red,
             dom.green,
             dom.blue
         ]))
+
+    const sinks = {
+        DOM: view$
     }
     return sinks
 }
