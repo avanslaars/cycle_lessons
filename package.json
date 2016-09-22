@@ -1,0 +1,34 @@
+{
+  "name": "cycle_lessons",
+  "version": "1.0.0",
+  "description": "Step By Step Lesson on CycleJS for SitePoint",
+  "main": "index.js",
+  "scripts": {
+    "dev": "webpack-dev-server",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/avanslaars/cycle_lessons.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/avanslaars/cycle_lessons/issues"
+  },
+  "homepage": "https://github.com/avanslaars/cycle_lessons#readme",
+  "dependencies": {
+    "@cycle/dom": "^12.1.0",
+    "@cycle/xstream-run": "^3.0.4",
+    "xstream": "^5.3.6"
+  },
+  "devDependencies": {
+    "babel": "^6.5.2",
+    "babel-core": "^6.13.2",
+    "babel-loader": "^6.2.5",
+    "babel-preset-es2015": "^6.13.2",
+    "webpack": "^1.13.2",
+    "webpack-dev-server": "^1.14.1"
+  }
+}
