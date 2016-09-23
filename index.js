@@ -37,8 +37,9 @@ function main(sources) {
     })
 
     const colorResponse$ = sources.HTTP.select('colors').flatten()
-    const deleteResponse$ = sources.HTTP.select('delete')
-        .flatten().map(() => deleteClick$.map(id => ({isDelete:true, id})))
+    const deleteResponse$ = sources.HTTP.select('delete').flatten()
+
+    const deletedItem$ = deleteResponse$.map(() => deleteClick$.map(id => ({isDelete:true, id})))
         .flatten()
 
     const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
@@ -74,7 +75,7 @@ function main(sources) {
         }))
 
     const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
-    const colorList$ = xs.merge(colors$, deleteResponse$).fold(colorReducer, [])
+    const colorList$ = xs.merge(colors$, deletedItem$).fold(colorReducer, [])
 
     const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
 

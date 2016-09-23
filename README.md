@@ -1522,11 +1522,14 @@ const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
 
 * At this point, **this will delete** on the server, but **won't update the UI** (verify with click and look at the `db.json`)
 * Add a stream to handle the delete response
+* And add a stream that maps that response to a usable value
 
 ``` js
-const deleteResponse$ = sources.HTTP.select('delete')
-    .flatten().map(() => deleteClick$.map(id => ({isDelete:true, id})))
+const deleteResponse$ = sources.HTTP.select('delete').flatten()
+
+const deletedItem$ = deleteResponse$.map(() => deleteClick$.map(id => ({isDelete:true, id})))
     .flatten()
+
 ```
 
 * In order for this to work, the value from `deleteClick$` needs to be `remember()`'d
@@ -1537,11 +1540,11 @@ const deleteClick$ = sources.DOM.select('.delete').events('click')
 ```
 
 * Now update the `colors$` call to `fold`:
-    * Merge in `deleteResponse$`
+    * Merge in `deletedItem$`
     * Move reducer function out of fold so it's easier to read...
     * Update callback function to account for the different message format
 
 ``` js
 const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
-const colorList$ = xs.merge(colors$, deleteResponse$).fold(colorReducer, [])
+const colorList$ = xs.merge(colors$, deletedItem$).fold(colorReducer, [])
 ```
