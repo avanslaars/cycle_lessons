@@ -4,7 +4,7 @@ import xs from 'xstream'
 import {run} from '@cycle/xstream-run'
 import isolate from '@cycle/isolate'
 import {makeHTTPDriver} from '@cycle/http'
-import {makeDOMDriver, h1, div, input, label, button, ul, li} from '@cycle/dom'
+import {makeDOMDriver, h1, div, input, label, button, ul, li, a} from '@cycle/dom'
 
 function LabeledSlider(sources) {
     const value$ = sources.DOM.select('.slider').events('input')
@@ -28,12 +28,18 @@ function LabeledSlider(sources) {
 
 function main(sources) {
     const saveClick$ = sources.DOM.select('.save').events('click')
+    const deleteClick$ = sources.DOM.select('.delete').events('click')
+        .map(ev => ev.target.getAttribute('data-color-id')).remember()
+
     const getInitialColors$ = xs.of({
       url: 'http://localhost:3000/colors',
       category: 'colors'
     })
 
     const colorResponse$ = sources.HTTP.select('colors').flatten()
+    const deleteResponse$ = sources.HTTP.select('delete')
+        .flatten().map(() => deleteClick$.map(id => ({isDelete:true, id})))
+        .flatten()
 
     const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
     const red$ = redSlider.VALUE
@@ -60,9 +66,17 @@ function main(sources) {
             send: c
         }))
 
-    const colorList$ = colors$.fold((acc, c) => acc.concat(c), [])
+    const deleteColor$ = deleteClick$
+        .map(id => ({
+            url: `http://localhost:3000/colors/${id}`,
+            method: 'DELETE',
+            category: 'delete'
+        }))
 
-    const request$ = xs.merge(getInitialColors$, postColor$)
+    const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
+    const colorList$ = xs.merge(colors$, deleteResponse$).fold(colorReducer, [])
+
+    const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
 
     const state$ = xs.combine(currentColor$, colorList$).map(([currentColor, colors]) => ({...currentColor, colors}))
     const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
@@ -78,7 +92,8 @@ function main(sources) {
             div('#colorList', [
                 ul(
                     state.colors.map(c => li(
-                        {attrs:{style:`background-color:rgb(${c.red}, ${c.green}, ${c.blue})`}}
+                        {attrs:{style:`background-color:rgb(${c.red}, ${c.green}, ${c.blue})`}},
+                        [a('.delete',{attrs:{'data-color-id':c.id, href:'#'}}, ['x'])]
                     ))
                 )
             ])

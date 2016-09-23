@@ -1483,3 +1483,65 @@ run(main, {
     HTTP: makeHTTPDriver()
 })
 ```
+
+## Deleting a color
+
+* Add a link to the view for each li, including the color id
+
+``` js
+state.colors.map(c => li(
+    {attrs:{style:`background-color:rgb(${c.red}, ${c.green}, ${c.blue})`}},
+    [a('.delete',{attrs:{'data-color-id':c.id, href:'#'}}, ['x'])]
+))
+```
+
+* Add a click handler for the link
+* Map to the data-attrib and `remember()` the value
+
+``` js
+const deleteClick$ = sources.DOM.select('.delete').events('click')
+    .map(ev => ev.target.getAttribute('data-color-id'))
+```
+
+* Add a `deleteColor$` request (put it with the post$)
+
+``` js
+const deleteColor$ = deleteClick$
+    .map(id => ({
+        url: `http://localhost:3000/colors/${id}`,
+        method: 'DELETE',
+        category: 'delete'
+    }))
+```
+
+* And merge it in with the other requests
+
+``` js
+const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
+```
+
+* At this point, **this will delete** on the server, but **won't update the UI** (verify with click and look at the `db.json`)
+* Add a stream to handle the delete response
+
+``` js
+const deleteResponse$ = sources.HTTP.select('delete')
+    .flatten().map(() => deleteClick$.map(id => ({isDelete:true, id})))
+    .flatten()
+```
+
+* In order for this to work, the value from `deleteClick$` needs to be `remember()`'d
+
+``` js
+const deleteClick$ = sources.DOM.select('.delete').events('click')
+    .map(ev => ev.target.getAttribute('data-color-id')).remember()
+```
+
+* Now update the `colors$` call to `fold`:
+    * Merge in `deleteResponse$`
+    * Move reducer function out of fold so it's easier to read...
+    * Update callback function to account for the different message format
+
+``` js
+const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
+const colorList$ = xs.merge(colors$, deleteResponse$).fold(colorReducer, [])
+```
