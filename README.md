@@ -1221,3 +1221,265 @@ run(main, {
     DOM: makeDOMDriver('#app')
 })
 ```
+
+## Making HTTP Calls to Get and Save colors
+
+* install http driver `npm i -S @cycle/http@11.0.1`
+* Add `db.json` file
+
+``` json
+{
+    "colors": [
+        {"id":1 ,"red":255, "green":0, "blue":0},
+        {"id":2 ,"red":0, "green":255, "blue":0},
+        {"id":3 ,"red":0, "green":0, "blue":255}
+    ]
+}
+```
+
+* Run json-server: `json-server --watch db.json`
+* Add import to file `import {makeHTTPDriver} from '@cycle/http'`
+* Update run to include HTTP driver
+
+``` js
+run(main, {
+    DOM: makeDOMDriver('#app'),
+    HTTP: makeHTTPDriver()
+})
+```
+
+* empty out initial colors & demo (so it's obvious when loading from the server works)
+* Add a request for colors (toward top of function)
+* assign that request (getInitialColors$) to `request$` (for merging later)
+* add HTTP property to sinks with `request$` as value
+* add `colorResponse$` to get initialColors
+    * `const colorResponse$ = sources.HTTP.select('colors').flatten()`
+    * And map body to `initialColors$` - `const initialColors$ = colorResponse$.map(res => res.body)`
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import isolate from '@cycle/isolate'
+import {makeHTTPDriver} from '@cycle/http'
+import {makeDOMDriver, h1, div, input, label, button, ul, li} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const view$ = xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ]))
+
+    const sinks = {
+        DOM: view$,
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const saveClick$ = sources.DOM.select('.save').events('click')
+    const getInitialColors$ = xs.of({
+      url: 'http://localhost:3000/colors',
+      category: 'colors'
+    })
+
+    const request$ = getInitialColors$
+    const colorResponse$ = sources.HTTP.select('colors').flatten()
+
+    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const currentColor$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+    const initialColors$ = colorResponse$.map(res => res.body)
+
+    const newColor$ = currentColor$.map(color => saveClick$.map(() => color)).flatten()
+    const colorList$ = xs.merge(initialColors$, newColor$).fold((acc, c) => acc.concat(c), [])
+
+    const state$ = xs.combine(currentColor$, colorList$).map(([currentColor, colors]) => ({...currentColor, colors}))
+    const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
+
+    const view$ = xs.combine(state$, dom$).map(([state, dom]) => div([
+            div('#colorControls', [
+                h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
+                dom.red,
+                dom.green,
+                dom.blue,
+                button('.save', 'Save Color')
+            ]),
+            div('#colorList', [
+                ul(
+                    state.colors.map(c => li(
+                        {attrs:{style:`background-color:rgb(${c.red}, ${c.green}, ${c.blue})`}}
+                    ))
+                )
+            ])
+        ]))
+
+    const sinks = {
+        DOM: view$,
+        HTTP: request$
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app'),
+    HTTP: makeHTTPDriver()
+})
+```
+
+* Let's save to the server with an HTTP Post
+* Add post request right after (and based on) newColor$
+
+``` js
+const postColor$ = newColor$.map(c => ({
+        url: 'http://localhost:3000/colors',
+        method: 'POST',
+        category: 'save',
+        type: 'application/json',
+        send: c
+    }))
+```
+
+* Move `const request$ = getInitialColors$` down, just before state$
+* Update `request$` to be `const request$ = xs.merge(getInitialColors$, postColor$)`
+* Saving now will send to the server!
+* Make the link addition wait for the post response
+    * This will work with the SAME response as the initial color load...
+    * having the same category and the way the fold uses concat means that an array of objects or a single object (which is what the post returns) will both just work
+
+
+``` js
+const currentColor$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+const colors$ = colorResponse$.map(res => res.body)
+
+const postColor$ = currentColor$
+    .map(color => saveClick$.map(() => color))
+    .flatten().map(c => ({
+        url: 'http://localhost:3000/colors',
+        method: 'POST',
+        category: 'colors',
+        type: 'application/json',
+        send: c
+    }))
+```
+
+* The whole thing at this point:
+
+``` js
+'use strict'
+
+import xs from 'xstream'
+import {run} from '@cycle/xstream-run'
+import isolate from '@cycle/isolate'
+import {makeHTTPDriver} from '@cycle/http'
+import {makeDOMDriver, h1, div, input, label, button, ul, li} from '@cycle/dom'
+
+function LabeledSlider(sources) {
+    const value$ = sources.DOM.select('.slider').events('input')
+        .map(ev => ev.target.value)
+        .startWith(0)
+
+    const props$ = sources.PROPS
+
+    const view$ = xs.combine(props$, value$).map(([props, value]) => div([
+            input('.slider', {attrs:{type:'range', min:props.min, max:props.max}, props:{value:value}}),
+            label(`${props.name}:(${value})`)
+        ]))
+
+    const sinks = {
+        DOM: view$,
+        VALUE: value$
+    }
+
+    return sinks
+}
+
+function main(sources) {
+    const saveClick$ = sources.DOM.select('.save').events('click')
+    const getInitialColors$ = xs.of({
+      url: 'http://localhost:3000/colors',
+      category: 'colors'
+    })
+
+    const colorResponse$ = sources.HTTP.select('colors').flatten()
+
+    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const red$ = redSlider.VALUE
+    const redDom$ = redSlider.DOM
+
+    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const green$ = greenSlider.VALUE
+    const greenDom$ = greenSlider.DOM
+
+    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blue$ = blueSlider.VALUE
+    const blueDom$ = blueSlider.DOM
+
+    const currentColor$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+    const colors$ = colorResponse$.map(res => res.body)
+
+    const postColor$ = currentColor$
+        .map(color => saveClick$.map(() => color))
+        .flatten().map(c => ({
+            url: 'http://localhost:3000/colors',
+            method: 'POST',
+            category: 'colors',
+            type: 'application/json',
+            send: c
+        }))
+
+    const colorList$ = colors$.fold((acc, c) => acc.concat(c), [])
+
+    const request$ = xs.merge(getInitialColors$, postColor$)
+
+    const state$ = xs.combine(currentColor$, colorList$).map(([currentColor, colors]) => ({...currentColor, colors}))
+    const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
+
+    const view$ = xs.combine(state$, dom$).map(([state, dom]) => div([
+            div('#colorControls', [
+                h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
+                dom.red,
+                dom.green,
+                dom.blue,
+                button('.save', 'Save Color')
+            ]),
+            div('#colorList', [
+                ul(
+                    state.colors.map(c => li(
+                        {attrs:{style:`background-color:rgb(${c.red}, ${c.green}, ${c.blue})`}}
+                    ))
+                )
+            ])
+        ]))
+
+    const sinks = {
+        DOM: view$,
+        HTTP: request$
+    }
+    return sinks
+}
+
+run(main, {
+    DOM: makeDOMDriver('#app'),
+    HTTP: makeHTTPDriver()
+})
+```
