@@ -34,6 +34,8 @@ function main(sources) {
     const deleteClick$ = sources.DOM.select('.delete').events('click')
         .map(ev => ev.target.getAttribute('data-color-id')).remember()
 
+    const cancelClick$ = sources.DOM.select('.cancel').events('click')
+
     const getInitialColors$ = xs.of({
       url: 'http://localhost:3000/colors',
       category: 'colors'
@@ -42,7 +44,7 @@ function main(sources) {
     const colorResponse$ = sources.HTTP.select('colors').flatten()
     const deleteResponse$ = sources.HTTP.select('delete').flatten()
 
-    const resetSlider$ = colorResponse$.mapTo(0)
+    const resetSlider$ = xs.merge(colorResponse$, cancelClick$).mapTo(0)
 
     const colorMapping = {
         ok: 'Color was succesfully removed',
@@ -118,7 +120,8 @@ function main(sources) {
                 dom.red,
                 dom.green,
                 dom.blue,
-                button('.save', 'Save Color')
+                button('.save', 'Save Color'),
+                a('.cancel',{attrs:{href:'#'}}, ['cancel'])
             ]),
             div('#colorList', [
                 ul(

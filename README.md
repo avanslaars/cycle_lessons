@@ -1695,3 +1695,11 @@ const blueDom$ = blueSlider.DOM
 * This will reset all 3 sliders after adding a color, but not on delete...
 * So, if you are creating a color and decide to delete one before adding the replacement, you can do that
 * If you want deletes to reset, just merge the `colorResponse$` and `deleteResponse$` into `resetSlider$`
+
+### Cancel through a link
+
+I can apply the same cancel logic by merging in a click stream...
+
+* Add a link to the output - `a('.cancel',{attrs:{href:'#'}}, ['cancel'])`
+* Add a handler for it - `const cancelClick$ = sources.DOM.select('.cancel').events('click')`
+* Merge that into the `resetSlider$` stream - `const resetSlider$ = xs.merge(colorResponse$, cancelClick$).mapTo(0)`
