@@ -7,9 +7,12 @@ import {makeHTTPDriver} from '@cycle/http'
 import {makeDOMDriver, h1, div, input, label, button, ul, li, a} from '@cycle/dom'
 
 function LabeledSlider(sources) {
-    const value$ = sources.DOM.select('.slider').events('input')
+    const input$ = sources.DOM.select('.slider').events('input')
         .map(ev => ev.target.value)
-        .startWith(0)
+
+    const slideValue$ = sources.VAL
+
+    const value$ = xs.merge(input$, slideValue$).startWith(0)
 
     const props$ = sources.PROPS
 
@@ -39,18 +42,44 @@ function main(sources) {
     const colorResponse$ = sources.HTTP.select('colors').flatten()
     const deleteResponse$ = sources.HTTP.select('delete').flatten()
 
+    const resetSlider$ = colorResponse$.mapTo(0)
+
+    const colorMapping = {
+        ok: 'Color was succesfully removed',
+        created: 'Color was added'
+    }
+    const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+        .map(res => res.statusText.toLowerCase())
+        .map(res => colorMapping[res] || '')
+        .map(txt => xs.merge(
+            xs.of(txt),
+            xs.periodic(2000).mapTo('').take(1)
+        ))
+        .flatten()
+        .drop(1)
+        .startWith('')
+
     const deletedItem$ = deleteResponse$.map(() => deleteClick$.map(id => ({isDelete:true, id})))
         .flatten()
 
-    const redSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Red', min:0, max:255})})
+    const redSlider = isolate(LabeledSlider)({
+        DOM: sources.DOM,
+        PROPS: xs.of({name: 'Red', min:0, max:255}),
+        VAL: resetSlider$})
     const red$ = redSlider.VALUE
     const redDom$ = redSlider.DOM
 
-    const greenSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Green', min:0, max:255})})
+    const greenSlider = isolate(LabeledSlider)({
+        DOM: sources.DOM,
+        PROPS: xs.of({name: 'Green', min:0, max:255}),
+        VAL: resetSlider$})
     const green$ = greenSlider.VALUE
     const greenDom$ = greenSlider.DOM
 
-    const blueSlider = isolate(LabeledSlider)({DOM: sources.DOM, PROPS: xs.of({name: 'Blue', min:0, max:255})})
+    const blueSlider = isolate(LabeledSlider)({
+        DOM: sources.DOM,
+        PROPS: xs.of({name: 'Blue', min:0, max:255}),
+        VAL: resetSlider$})
     const blue$ = blueSlider.VALUE
     const blueDom$ = blueSlider.DOM
 
@@ -79,10 +108,11 @@ function main(sources) {
 
     const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
 
-    const state$ = xs.combine(currentColor$, colorList$).map(([currentColor, colors]) => ({...currentColor, colors}))
+    const state$ = xs.combine(currentColor$, colorList$, statusText$).map(([currentColor, colors, status]) => ({...currentColor, colors, status}))
     const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
 
     const view$ = xs.combine(state$, dom$).map(([state, dom]) => div([
+            h1(state.status),
             div('#colorControls', [
                 h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
                 dom.red,

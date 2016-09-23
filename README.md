@@ -1548,3 +1548,150 @@ const deleteClick$ = sources.DOM.select('.delete').events('click')
 const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
 const colorList$ = xs.merge(colors$, deletedItem$).fold(colorReducer, [])
 ```
+
+## Status Display & Form Reset
+
+### Let's Display a Status Update on HTTP Calls
+
+* Add a `statusText$` based on both http responses
+
+``` js
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText)
+    .startWith('')
+```
+
+* Work that into the state object
+
+``` js
+const state$ = xs.combine(currentColor$, colorList$, statusText$).map(([currentColor, colors, status]) => ({...currentColor, colors, status}))
+```
+
+* And add it to the rendered view - `h1(state.status),`
+* Running this will do the following:
+    * "Ok" will be displayed on initial page load - this is from the response on getInitialColors
+    * Adding a color will change the displayed text to "Created"
+    * Deleting will show "Ok" again
+* So let's fix some stuff...
+* First, we'll prevent the initial status display on load by adding a `drop(1)`
+
+``` js
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText)
+    .drop(1)
+    .startWith('')
+```
+
+* Next, let's map the status text to a more friendly value
+    * Add a colorMapping object
+    * Update statusText map to return lowercase value
+    * Map to that key in the object (or empty string for safety)
+
+``` js
+const colorMapping = {
+    ok: 'Color was succesfully removed',
+    created: 'Color was added'
+}
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText.toLowerCase())
+    .map(res => colorMapping[res] || '')
+    .drop(1)
+    .startWith('')
+```
+
+### Hide the message after some time
+
+* Now let's hide the message after 2 seconds
+* Add one more mapping, this time, returning a stream of streams and flattening
+    * This is going to seem strange and overly complex at first... stick with me
+
+``` js
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText.toLowerCase())
+    .map(res => colorMapping[res] || '')
+    .map(txt => xs.of(txt))
+    .flatten()
+    .drop(1)
+    .startWith('')
+```
+
+* that works just as before, but adds seemingly unnecessary complexity
+* Now that we are setup to map to a stream, we can just as easily return a merged stream from that map...
+    * So, we'll convert that to a `xs.merge` call, and merge our static stream with a stream that will emit an empty value
+
+``` js
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText.toLowerCase())
+    .map(res => colorMapping[res] || '')
+    .map(txt => xs.merge(
+        xs.of(txt),
+        xs.periodic(2000).map(() => '').take(1)
+    ))
+    .flatten()
+    .drop(1)
+    .startWith('')
+```
+
+* We can refactor that map on the periodic stream to a `mapTo`
+
+``` js
+const statusText$ = xs.merge(colorResponse$, deleteResponse$)
+    .map(res => res.statusText.toLowerCase())
+    .map(res => colorMapping[res] || '')
+    .map(txt => xs.merge(
+        xs.of(txt),
+        xs.periodic(2000).mapTo('').take(1)
+    ))
+    .flatten()
+    .drop(1)
+    .startWith('')
+```
+
+### Let's Reset the form!
+
+* Refactor LabeledSlider component by adding VAL source and merging with input$ (renamed from value$)
+    * name merged stream `value$`
+
+``` js
+const input$ = sources.DOM.select('.slider').events('input')
+    .map(ev => ev.target.value)
+
+const slideValue$ = sources.VAL
+
+const value$ = xs.merge(input$, slideValue$).startWith(0)
+```
+
+* Use colorResponse$ to create a stream and just map to 0
+
+``` js
+const resetSlider$ = colorResponse$.mapTo(0)
+```
+
+* Pass this into each instance of the slider as `VAL`
+
+``` js
+const redSlider = isolate(LabeledSlider)({
+    DOM: sources.DOM,
+    PROPS: xs.of({name: 'Red', min:0, max:255}),
+    VAL: resetSlider$})
+const red$ = redSlider.VALUE
+const redDom$ = redSlider.DOM
+
+const greenSlider = isolate(LabeledSlider)({
+    DOM: sources.DOM,
+    PROPS: xs.of({name: 'Green', min:0, max:255}),
+    VAL: resetSlider$})
+const green$ = greenSlider.VALUE
+const greenDom$ = greenSlider.DOM
+
+const blueSlider = isolate(LabeledSlider)({
+    DOM: sources.DOM,
+    PROPS: xs.of({name: 'Blue', min:0, max:255}),
+    VAL: resetSlider$})
+const blue$ = blueSlider.VALUE
+const blueDom$ = blueSlider.DOM
+```
+
+* This will reset all 3 sliders after adding a color, but not on delete...
+* So, if you are creating a color and decide to delete one before adding the replacement, you can do that
+* If you want deletes to reset, just merge the `colorResponse$` and `deleteResponse$` into `resetSlider$`
