@@ -114,14 +114,14 @@ function main(sources) {
     const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
 
     const view$ = xs.combine(state$, dom$).map(([state, dom]) => div([
-            h1(state.status),
             div('#colorControls', [
                 h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
                 dom.red,
                 dom.green,
                 dom.blue,
                 button('.save', 'Save Color'),
-                a('.cancel',{attrs:{href:'#'}}, ['cancel'])
+                a('.cancel',{attrs:{href:'#'}}, ['cancel']),
+                div('.statusMessage', state.status)
             ]),
             div('#colorList', [
                 ul(
