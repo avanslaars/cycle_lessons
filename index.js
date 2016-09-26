@@ -20,6 +20,7 @@ function intent(sources) {
   })
 
   const colorResponse$ = sources.HTTP.select('colors').flatten()
+    // .replaceError(err => xs.of({body:[], statusText: 'Error'}))
   const deleteResponse$ = sources.HTTP.select('delete').flatten()
 
   const resetSlider$ = xs.merge(colorResponse$, cancelClick$).mapTo(0)
@@ -59,12 +60,16 @@ function intent(sources) {
 }
 
 function model(actions) {
+  const {getInitialColors$, colorResponse$, deleteResponse$, resetSlider$,
+    currentColorProxy$, postColor$, deleteColor$, deletedItem$, dom$} = actions
+
   const colorMapping = {
     ok: 'Color was succesfully removed',
-    created: 'Color was added'
+    created: 'Color was added',
+    error: 'Ooops!'
   }
 
-  const statusText$ = xs.merge(actions.colorResponse$, actions.deleteResponse$)
+  const statusText$ = xs.merge(colorResponse$, deleteResponse$)
     .map(res => res.statusText.toLowerCase())
     .map(res => colorMapping[res] || '')
     .map(txt => xs.merge(
@@ -76,39 +81,39 @@ function model(actions) {
     .startWith('')
 
   const redSlider = isolate(LabeledSlider)({
-      DOM: actions.dom$,
+      DOM: dom$,
       PROPS: xs.of({name: 'Red', min:0, max:255}),
-      VAL: actions.resetSlider$})
+      VAL: resetSlider$})
   const red$ = redSlider.VALUE
   const redDom$ = redSlider.DOM
 
   const greenSlider = isolate(LabeledSlider)({
-      DOM: actions.dom$,
+      DOM: dom$,
       PROPS: xs.of({name: 'Green', min:0, max:255}),
-      VAL: actions.resetSlider$})
+      VAL: resetSlider$})
   const green$ = greenSlider.VALUE
   const greenDom$ = greenSlider.DOM
 
   const blueSlider = isolate(LabeledSlider)({
-      DOM: actions.dom$,
+      DOM: dom$,
       PROPS: xs.of({name: 'Blue', min:0, max:255}),
-      VAL: actions.resetSlider$})
+      VAL: resetSlider$})
   const blue$ = blueSlider.VALUE
   const blueDom$ = blueSlider.DOM
 
   const currentColor$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
-  actions.currentColorProxy$.imitate(currentColor$)
-  const colors$ = actions.colorResponse$.map(res => res.body)
+  currentColorProxy$.imitate(currentColor$)
+  const colors$ = colorResponse$.map(res => res.body)
 
   const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
-  const colorList$ = xs.merge(colors$, actions.deletedItem$).fold(colorReducer, [])
+  const colorList$ = xs.merge(colors$, deletedItem$).fold(colorReducer, [])
 
-  const request$ = xs.merge(actions.getInitialColors$, actions.postColor$, actions.deleteColor$)
+  const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
 
   const state$ = xs.combine(currentColor$, colorList$, statusText$).map(([currentColor, colors, status]) => ({...currentColor, colors, status}))
-  const dom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
+  const combinedDom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
 
-  const model$ = xs.combine(state$, dom$)
+  const model$ = xs.combine(state$, combinedDom$)
   return {
     model$,
     request$

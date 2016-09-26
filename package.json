@@ -19,11 +19,11 @@
   },
   "homepage": "https://github.com/avanslaars/cycle_lessons#readme",
   "dependencies": {
-    "@cycle/dom": "^12.1.0",
+    "@cycle/dom": "^12.2.5",
     "@cycle/http": "^11.0.1",
     "@cycle/isolate": "^1.4.0",
-    "@cycle/xstream-run": "^3.0.4",
-    "xstream": "^5.3.6"
+    "@cycle/xstream-run": "^3.1.0",
+    "xstream": "^6.1.0"
   },
   "devDependencies": {
     "babel": "^6.5.2",
