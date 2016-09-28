@@ -1703,3 +1703,101 @@ I can apply the same cancel logic by merging in a click stream...
 * Add a link to the output - `a('.cancel',{attrs:{href:'#'}}, ['cancel'])`
 * Add a handler for it - `const cancelClick$ = sources.DOM.select('.cancel').events('click')`
 * Merge that into the `resetSlider$` stream - `const resetSlider$ = xs.merge(colorResponse$, cancelClick$).mapTo(0)`
+
+
+## Refactor to MVI
+
+### Moving Intent to a Function
+
+* Create intent function
+* Move stuff into it (clicks, http reponses)
+* The post is where the proxy had to come in in order to separate the intent and model:
+
+``` js
+const postColor$ = currentColor$
+  .map(color => saveClick$.map(() => color))
+  .flatten().map(c => ({
+      url: 'http://localhost:3000/colors',
+      method: 'POST',
+      category: 'colors',
+      type: 'application/json',
+      send: c
+  }))
+```
+
+* Becomes:
+
+``` js
+const currentColorProxy$ = xs.create()
+const postColor$ = currentColorProxy$
+  .map(color => saveClick$.map(() => color))
+  .flatten().map(c => ({
+      url: 'http://localhost:3000/colors',
+      method: 'POST',
+      category: 'colors',
+      type: 'application/json',
+      send: c
+  }))
+```
+
+* Then where the currentColor$ is assigned, imitate the currentColor$:
+
+``` js
+const currentColor$ = xs.combine(red$, green$, blue$).map(([red,green,blue]) => ({red, green, blue}))
+currentColorProxy$.imitate(currentColor$)
+```
+
+## Handling HTTP Errors
+
+* To create an error, we'll use some middleware in json-server
+
+``` js
+// error_get_middleware.js
+// Just swap out http verb to force errors on specific calls
+module.exports = function (req, res, next) {
+    if(req.method === 'DELETE') {
+        res.status(500).send('Error deleting stuff')
+    } else {
+        next()
+    }
+}
+```
+
+* and include the middleware when running the server
+    * `json-server --middlewares ./error_get_middleware.js --watch db.json`
+
+* HTTP driver returns a metastream ( a stream of streams)
+* Error will be on the inner response stream, so to replace the error, do:
+
+``` js
+const colorResponse$ = sources.HTTP.select('colors')
+  .map(resp$ => resp$.replaceError(err => xs.of({body:[], statusText: 'Error'})))
+  .flatten()
+```
+
+* Do the same for the delete:
+
+``` js
+const deleteResponse$ = sources.HTTP.select('delete')
+  .map(resp$ => resp$.replaceError(err => xs.of({body:[], statusText: 'Error'})))
+  .flatten()
+```
+
+* Also, to prevent the delete from happening in the UI when it fails on the server, update deletedItem$
+
+``` js
+const deletedItem$ = deleteResponse$
+    .map(resp => resp.statusText === 'Error' ? xs.never() : deleteClick$.map(id => ({isDelete:true, id})))
+    .flatten()
+```
+
+* BUT, this will result in odd behavior... if you click an item that works, then click the item that fails on the server, it will be removed from the UI because the returned deleteClick stream will fire again...
+  * This happens because `deletedItem$` is now emitting when `deleteClick$` emits...
+  * It will send the `{isDelete:true, id}` object **before** `deleteResponse$` emits an event which will map to a new stream based on the new response... so in the interim, `deleteClick$` is still emitting on new clicks (which we need to start the http request) and this happens first, then the response, then a new one is created...
+  * So, `take(1)` prevents the mapped stream from firing between the first use and the time it gets replaced.
+
+``` js
+const deletedItem$ = deleteResponse$
+    .map(resp => resp.statusText == 'Error' ? xs.never() : deleteClick$.take(1).map(id => ({isDelete:true, id})))
+    .flatten()
+```

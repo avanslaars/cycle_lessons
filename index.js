@@ -9,7 +9,10 @@ import LabeledSlider from './LabeledSlider'
 
 function intent(sources) {
   const saveClick$ = sources.DOM.select('.save').events('click')
+  // TODO: Update notes to reflect the update that broke out deleteId from deleteClick
   const deleteClick$ = sources.DOM.select('.delete').events('click')
+
+  const deleteId$ = deleteClick$
       .map(ev => ev.target.getAttribute('data-color-id')).remember()
 
   const cancelClick$ = sources.DOM.select('.cancel').events('click')
@@ -19,9 +22,14 @@ function intent(sources) {
     category: 'colors'
   })
 
-  const colorResponse$ = sources.HTTP.select('colors').flatten()
-    // .replaceError(err => xs.of({body:[], statusText: 'Error'}))
-  const deleteResponse$ = sources.HTTP.select('delete').flatten()
+
+  const colorResponse$ = sources.HTTP.select('colors')
+    .map(resp$ => resp$.replaceError(err => xs.of({body:[], statusText: 'Error'})))
+    .flatten()
+  const deleteResponse$ = sources.HTTP.select('delete')
+    .map(resp$ => resp$.replaceError(err => xs.of({body:[], statusText: 'Error'})))
+    .flatten()
+    .debug(() => console.log('del response'))
 
   const resetSlider$ = xs.merge(colorResponse$, cancelClick$).mapTo(0)
 
@@ -36,32 +44,32 @@ function intent(sources) {
         send: c
     }))
 
-  const deleteColor$ = deleteClick$
+  const deleteColor$ = deleteId$
     .map(id => ({
         url: `http://localhost:3000/colors/${id}`,
         method: 'DELETE',
         category: 'delete'
     }))
 
-  const deletedItem$ = deleteResponse$.map(() => deleteClick$.map(id => ({isDelete:true, id})))
+  const deletedItem$ = deleteResponse$.map(resp => resp.statusText == 'Error' ? xs.empty() : deleteId$.take(1).map(id => ({isDelete:true, id})))
       .flatten()
 
+  const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
+
   return {
-    getInitialColors$,
     colorResponse$,
     deleteResponse$,
     resetSlider$,
     currentColorProxy$,
-    postColor$,
-    deleteColor$,
+    request$,
     deletedItem$,
     dom$: sources.DOM
   }
 }
 
 function model(actions) {
-  const {getInitialColors$, colorResponse$, deleteResponse$, resetSlider$,
-    currentColorProxy$, postColor$, deleteColor$, deletedItem$, dom$} = actions
+  const {colorResponse$, deleteResponse$, resetSlider$,
+    currentColorProxy$, request$, deletedItem$, dom$} = actions
 
   const colorMapping = {
     ok: 'Color was succesfully removed',
@@ -108,25 +116,29 @@ function model(actions) {
   const colorReducer = (acc, c) => c.isDelete ? acc.filter(color => color.id != c.id): acc.concat(c)
   const colorList$ = xs.merge(colors$, deletedItem$).fold(colorReducer, [])
 
-  const request$ = xs.merge(getInitialColors$, postColor$, deleteColor$)
-
   const state$ = xs.combine(currentColor$, colorList$, statusText$).map(([currentColor, colors, status]) => ({...currentColor, colors, status}))
   const combinedDom$ = xs.combine(redDom$, greenDom$, blueDom$).map(([red,green,blue]) => ({red, green, blue}))
 
-  const model$ = xs.combine(state$, combinedDom$)
-  return {
-    model$,
-    request$
-  }
+  return xs.combine(state$, combinedDom$)
+    .map(([state, dom]) => ({
+        red:state.red,
+        green: state.green,
+        blue: state.blue,
+        status: state.status,
+        colors: state.colors,
+        redDom: dom.red,
+        greenDom: dom.green,
+        blueDom: dom.blue
+    }))
 }
 
 function view(model$) {
-  return model$.map(([state, dom]) => div([
+  return model$.map(state => div([
       div('#colorControls', [
           h1({attrs:{style:`color:rgb(${state.red}, ${state.green}, ${state.blue})`}},'Current Color'),
-          dom.red,
-          dom.green,
-          dom.blue,
+          state.redDom,
+          state.greenDom,
+          state.blueDom,
           button('.save', 'Save Color'),
           a('.cancel',{attrs:{href:'#'}}, ['cancel']),
           div('.statusMessage', state.status)
@@ -143,13 +155,13 @@ function view(model$) {
 }
 
 function main(sources) {
-    const actions = intent(sources)
-    const appState = model(actions)
-    const view$ = view(appState.model$)
+    const {request$, ...actions} = intent(sources)
+    const model$ = model(actions)
+    const view$ = view(model$)
 
     const sinks = {
         DOM: view$,
-        HTTP: appState.request$
+        HTTP: request$
     }
     return sinks
 }
