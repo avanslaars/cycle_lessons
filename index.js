@@ -17,6 +17,8 @@ function intent(sources) {
 
   const cancelClick$ = sources.DOM.select('.cancel').events('click')
 
+  const preventDefaultEvent$ = xs.merge(deleteClick$, cancelClick$)
+
   const getInitialColors$ = xs.of({
     url: 'http://localhost:3000/colors',
     category: 'colors'
@@ -63,6 +65,7 @@ function intent(sources) {
     currentColorProxy$,
     request$,
     deletedItem$,
+    preventDefaultEvent$,
     dom$: sources.DOM
   }
 }
@@ -155,18 +158,28 @@ function view(model$) {
 }
 
 function main(sources) {
-    const {request$, ...actions} = intent(sources)
+    const {request$, preventDefaultEvent$, ...actions} = intent(sources)
     const model$ = model(actions)
     const view$ = view(model$)
 
     const sinks = {
         DOM: view$,
-        HTTP: request$
+        HTTP: request$,
+        preventDefault: preventDefaultEvent$
     }
     return sinks
 }
 
+function preventDefaultDriver(ev$) {
+  ev$.addListener({
+    next: ev => ev.preventDefault(),
+    error: () => {},
+    complete: () => {},
+  });
+}
+
 run(main, {
     DOM: makeDOMDriver('#app'),
-    HTTP: makeHTTPDriver()
+    HTTP: makeHTTPDriver(),
+    preventDefault: preventDefaultDriver
 })

@@ -4,8 +4,8 @@ Step By Step Lesson on CycleJS for SitePoint
 ## Initial Setup & Hello World
 
 * `npm init -y`
-* `npm i -S xstream@5.3.6 @cycle/dom@12.1.0 @cycle/xstream-run@3.0.4`
-* `npm i -D babel@6.5.2 babel-core@6.13.2 babel-loader@6.2.5 babel-preset-es2015@6.13.2 webpack@1.13.2 webpack-dev-server@1.14.1`
+* `npm i -S xstream@6.1.0 @cycle/dom@12.2.5 @cycle/xstream-run@3.1.0`
+* `npm i -D babel@6.5.2 babel-core@6.13.2 babel-loader@6.2.5 babel-preset-es2015@6.13.2 webpack@1.13.2 webpack-dev-server@1.14.1 babel-plugin-transform-es2015-destructuring@6.9.0 babel-plugin-transform-object-rest-spread@6.8.0`
 * Add webpack config: `webpack.config.js`
 * Add dev command to `package.json` - `"dev": "webpack-dev-server"`
 * Create `index.html`
@@ -1800,4 +1800,60 @@ const deletedItem$ = deleteResponse$
 const deletedItem$ = deleteResponse$
     .map(resp => resp.statusText == 'Error' ? xs.never() : deleteClick$.take(1).map(id => ({isDelete:true, id})))
     .flatten()
+```
+## Building a Custom Driver to Prevent Default
+
+Preventing an event's default behavior is a seemingly simple task, but in Cycle, it requires a little more work than you might expect because it adheres to the concept of keeping **all** side effects in drivers.
+
+This is a simple, **write-only** driver. It is considered **write-only**, not read-only, because we're describing how the application interacts with the driver. In this case, the application writes to the driver, but does not read from it.
+
+* Define the driver
+
+``` js
+function preventDefaultDriver(ev$) {
+  ev$.addListener({
+    next: ev => ev.preventDefault(),
+    error: () => {},
+    complete: () => {},
+  });
+}
+```
+
+* In the intent function, create a stream of streams to prevent default on
+  * In our case, the deleteClick$ and cancelClick
+  * Merge them into a new stream (so it'll emit for either of them)
+
+``` js
+const preventDefaultEvent$ = xs.merge(deleteClick$, cancelClick$)
+```
+
+* Make that part of the return from `intent()`
+
+``` js
+return {
+  colorResponse$,
+  deleteResponse$,
+  resetSlider$,
+  currentColorProxy$,
+  request$,
+  deletedItem$,
+  preventDefaultEvent$,
+  dom$: sources.DOM
+}
+```
+
+* pull it out in `main()` when destructuring `intent()`
+
+``` js
+const {request$, preventDefaultEvent$, ...actions} = intent(sources)
+```
+
+* return it as a sink from `main()`
+
+``` js
+const sinks = {
+    DOM: view$,
+    HTTP: request$,
+    preventDefault: preventDefaultEvent$
+}
 ```
