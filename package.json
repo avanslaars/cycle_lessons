@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "webpack-dev-server",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -23,16 +23,28 @@
     "@cycle/http": "^11.0.1",
     "@cycle/isolate": "^1.4.0",
     "@cycle/xstream-run": "^3.1.0",
+    "jest": "^16.0.1",
     "xstream": "^6.1.0"
   },
   "devDependencies": {
+    "@cycle/xstream-adapter": "^3.0.3",
     "babel": "^6.5.2",
     "babel-core": "^6.13.2",
     "babel-loader": "^6.2.5",
     "babel-plugin-transform-es2015-destructuring": "^6.9.0",
     "babel-plugin-transform-object-rest-spread": "^6.8.0",
     "babel-preset-es2015": "^6.13.2",
+    "jest-cli": "^15.1.1",
     "webpack": "^1.13.2",
     "webpack-dev-server": "^1.14.1"
+  },
+  "babel": {
+    "presets": [
+      "es2015"
+    ],
+    "plugins": [
+      "transform-es2015-destructuring",
+      "transform-object-rest-spread"
+    ]
   }
 }

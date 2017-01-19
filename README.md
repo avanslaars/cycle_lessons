@@ -1857,3 +1857,18 @@ const sinks = {
     preventDefault: preventDefaultEvent$
 }
 ```
+
+## Testing with Jest
+
+* Started by configuring Jest
+
+### Intent
+
+* Started by breaking `intent()` out into a separate file
+* Exported it and imported into index, verified that it still worked
+* Mock Drivers...
+  * This can be a huge PITA
+  * You have to mock all of the intended sources, or it'll crap out on calls to `.select` for `undefined` objects
+  * The bigger the intent function, the more work this is going to be... like unit testing a ton of imperative code
+    * Because this is where the side-effects are... I _think_ testing model and view will be easier
+    * One could make the argument that testing the model is the only part that matters... in the sense that the intent is largely about 3rd party code doing the right thing, and you shouldn't be testing the framework in your unit tests... 
